@@ -9,6 +9,8 @@ import pdb
 import torch.nn.utils.weight_norm as weightNorm
 from collections import OrderedDict
 
+from torchvision.models import resnet18, resnet50, resnet101
+
 def init_weights(m):
     classname = m.__class__.__name__
     if classname.find('Conv2d') != -1 or classname.find('ConvTranspose2d') != -1:
@@ -77,7 +79,7 @@ class feat_classifier(nn.Module):
         super(feat_classifier, self).__init__()
         self.type = type
         if type == 'wn':
-            self.fc = weightNorm(nn.Linear(bottleneck_dim, class_num), name="weight")
+            self.fc = nn.utils.weight_norm(nn.Linear(bottleneck_dim, class_num), name="weight")
             self.fc.apply(init_weights)
         elif type == 'linear':
             self.fc = nn.Linear(bottleneck_dim, class_num)
@@ -90,7 +92,7 @@ class feat_classifier(nn.Module):
         if not self.type in {'wn', 'linear'}:
             w = self.fc.weight
             w = torch.nn.functional.normalize(w, dim=1, p=2)
-            
+
             x = torch.nn.functional.normalize(x, dim=1, p=2)
             x = torch.nn.functional.linear(x, w)
         else:
@@ -106,3 +108,30 @@ class feat_classifier_simpl(nn.Module):
     def forward(self, x):
         x = self.fc(x)
         return x
+
+def create_projector(in_dim, out_dim):
+    return nn.Sequential(nn.Linear(in_dim, in_dim),
+                         nn.BatchNorm1d(in_dim),
+                         nn.ReLU(inplace=True),
+                         nn.Linear(in_dim, out_dim),
+                         nn.BatchNorm1d(out_dim),
+                         )
+
+class Resnet(nn.Module):
+    def __init__(self, args):
+        super(Resnet, self).__init__()
+
+        self.netF = ResBase(res_name=args.net, pretrain=True)
+        self.netB = feat_bootleneck(type=args.classifier, feature_dim=self.netF.in_features, bottleneck_dim=args.bottleneck)
+        self.netC = feat_classifier(type=args.layer, class_num=args.class_num, bottleneck_dim=args.bottleneck)
+        self.netP = create_projector(args.bottleneck, args.bottleneck)
+
+    def forward(self, x):
+        x_q = self.netF(x)
+        features = self.netB(x_q)
+        logits = self.netC(features)
+        # q = self.netP(features)
+
+        return features, logits
+
+        # return q, logits

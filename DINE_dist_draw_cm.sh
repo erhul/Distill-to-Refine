@@ -1,0 +1,1 @@
+python DINE_dist_draw_cm.py --gpu_id 1 --seed 2021 --dset VISDA-C --s 0 --da uda --net_src resnet101 --max_epoch 30 --net resnet101 --lr 1e-2 --output ./ckps/tar

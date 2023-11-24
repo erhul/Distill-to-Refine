@@ -17,10 +17,12 @@ from loss import CrossEntropyLabelSmooth
 from scipy.spatial.distance import cdist
 from sklearn.metrics import confusion_matrix
 
+
 def op_copy(optimizer):
     for param_group in optimizer.param_groups:
         param_group['lr0'] = param_group['lr']
     return optimizer
+
 
 def lr_scheduler(optimizer, iter_num, max_iter, gamma=10, power=0.75):
     decay = (1 + gamma * iter_num / max_iter) ** (-power)
@@ -31,13 +33,14 @@ def lr_scheduler(optimizer, iter_num, max_iter, gamma=10, power=0.75):
         param_group['nesterov'] = True
     return optimizer
 
+
 def image_train(resize_size=256, crop_size=224, alexnet=False):
-  if not alexnet:
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                   std=[0.229, 0.224, 0.225])
-  else:
-    normalize = Normalize(meanfile='./ilsvrc_2012_mean.npy')
-  return  transforms.Compose([
+    if not alexnet:
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+    else:
+        normalize = Normalize(meanfile='./ilsvrc_2012_mean.npy')
+    return transforms.Compose([
         transforms.Resize((resize_size, resize_size)),
         transforms.RandomCrop(crop_size),
         transforms.RandomHorizontalFlip(),
@@ -45,20 +48,22 @@ def image_train(resize_size=256, crop_size=224, alexnet=False):
         normalize
     ])
 
+
 def image_test(resize_size=256, crop_size=224, alexnet=False):
-  if not alexnet:
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                   std=[0.229, 0.224, 0.225])
-  else:
-    normalize = Normalize(meanfile='./ilsvrc_2012_mean.npy')
-  return  transforms.Compose([
+    if not alexnet:
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+    else:
+        normalize = Normalize(meanfile='./ilsvrc_2012_mean.npy')
+    return transforms.Compose([
         transforms.Resize((resize_size, resize_size)),
         transforms.CenterCrop(crop_size),
         transforms.ToTensor(),
         normalize
     ])
 
-def data_load(args): 
+
+def data_load(args):
     ## prepare data
     dsets = {}
     dset_loaders = {}
@@ -80,17 +85,23 @@ def data_load(args):
             tr_txt.append(line)
 
     dsets["source_tr"] = ImageList(tr_txt, transform=image_train())
-    dset_loaders["source_tr"] = DataLoader(dsets["source_tr"], batch_size=train_bs, shuffle=True, num_workers=args.worker, drop_last=False)
+    dset_loaders["source_tr"] = DataLoader(dsets["source_tr"], batch_size=train_bs, shuffle=True,
+                                           num_workers=args.worker, drop_last=False)
     dsets["source_te"] = ImageList(te_txt, transform=image_test())
-    dset_loaders["source_te"] = DataLoader(dsets["source_te"], batch_size=train_bs, shuffle=True, num_workers=args.worker, drop_last=False)
+    dset_loaders["source_te"] = DataLoader(dsets["source_te"], batch_size=train_bs, shuffle=True,
+                                           num_workers=args.worker, drop_last=False)
     dsets["target"] = ImageList_idx(txt_tar, transform=image_train())
-    dset_loaders["target"] = DataLoader(dsets["target"], batch_size=train_bs, shuffle=True, num_workers=args.worker, drop_last=False)
+    dset_loaders["target"] = DataLoader(dsets["target"], batch_size=train_bs, shuffle=True, num_workers=args.worker,
+                                        drop_last=False)
     dsets["target_te"] = ImageList(txt_tar, transform=image_test())
-    dset_loaders["target_te"] = DataLoader(dsets["target_te"], batch_size=train_bs, shuffle=False, num_workers=args.worker, drop_last=False)
+    dset_loaders["target_te"] = DataLoader(dsets["target_te"], batch_size=train_bs, shuffle=False,
+                                           num_workers=args.worker, drop_last=False)
     dsets["test"] = ImageList(txt_test, transform=image_test())
-    dset_loaders["test"] = DataLoader(dsets["test"], batch_size=train_bs*2, shuffle=False, num_workers=args.worker, drop_last=False)
+    dset_loaders["test"] = DataLoader(dsets["test"], batch_size=train_bs * 2, shuffle=False, num_workers=args.worker,
+                                      drop_last=False)
 
     return dset_loaders
+
 
 def cal_acc(loader, netF, netB, netC, flag=False):
     start_test = True
@@ -120,14 +131,15 @@ def cal_acc(loader, netF, netB, netC, flag=False):
 
     if flag:
         matrix = confusion_matrix(all_label, torch.squeeze(predict).float())
-        matrix = matrix[np.unique(all_label).astype(int),:]
-        acc = matrix.diagonal()/matrix.sum(axis=1) * 100
+        matrix = matrix[np.unique(all_label).astype(int), :]
+        acc = matrix.diagonal() / matrix.sum(axis=1) * 100
         aacc = acc.mean()
         aa = [str(np.round(i, 2)) for i in acc]
         acc = ' '.join(aa)
         return aacc, acc, mean_ent
     else:
-        return accuracy*100, mean_ent
+        return accuracy * 100, mean_ent
+
 
 def train_source_simp(args):
     dset_loaders = data_load(args)
@@ -138,9 +150,9 @@ def train_source_simp(args):
     param_group = []
     learning_rate = args.lr_src
     for k, v in netF.named_parameters():
-        param_group += [{'params': v, 'lr': learning_rate*0.1}]
+        param_group += [{'params': v, 'lr': learning_rate * 0.1}]
     for k, v in netC.named_parameters():
-        param_group += [{'params': v, 'lr': learning_rate}]   
+        param_group += [{'params': v, 'lr': learning_rate}]
     optimizer = optim.SGD(param_group)
     optimizer = op_copy(optimizer)
 
@@ -167,8 +179,9 @@ def train_source_simp(args):
 
         inputs_source, labels_source = inputs_source.cuda(), labels_source.cuda()
         outputs_source = netC(netF(inputs_source))
-        classifier_loss = CrossEntropyLabelSmooth(num_classes=args.class_num, epsilon=0.1)(outputs_source, labels_source)            
-        
+        classifier_loss = CrossEntropyLabelSmooth(num_classes=args.class_num, epsilon=0.1)(outputs_source,
+                                                                                           labels_source)
+
         optimizer.zero_grad()
         classifier_loss.backward()
         optimizer.step()
@@ -180,7 +193,7 @@ def train_source_simp(args):
             log_str = 'Task: {}, Iter:{}/{}; Accuracy = {:.2f}%'.format(args.name_src, iter_num, max_iter, acc_s_te)
             args.out_file.write(log_str + '\n')
             args.out_file.flush()
-            print(log_str+'\n')
+            print(log_str + '\n')
 
             if acc_s_te >= acc_init:
                 acc_init = acc_s_te
@@ -189,21 +202,22 @@ def train_source_simp(args):
 
             netF.train()
             netC.train()
-                
+
     torch.save(best_netF, osp.join(args.output_dir_src, "source_F.pt"))
     torch.save(best_netC, osp.join(args.output_dir_src, "source_C.pt"))
 
     return netF, netC
 
+
 def test_target_simp(args):
     dset_loaders = data_load(args)
     if args.net_src[0:3] == 'res':
         netF = network.ResBase(res_name=args.net_src).cuda()
-    netC = network.feat_classifier_simpl(class_num = args.class_num, feat_dim=netF.in_features).cuda()
-    
-    args.modelpath = args.output_dir_src + '/source_F.pt'   
+    netC = network.feat_classifier_simpl(class_num=args.class_num, feat_dim=netF.in_features).cuda()
+
+    args.modelpath = args.output_dir_src + '/source_F.pt'
     netF.load_state_dict(torch.load(args.modelpath))
-    args.modelpath = args.output_dir_src + '/source_C.pt'   
+    args.modelpath = args.output_dir_src + '/source_C.pt'
     netC.load_state_dict(torch.load(args.modelpath))
     netF.eval()
     netC.eval()
@@ -215,32 +229,34 @@ def test_target_simp(args):
     args.out_file.flush()
     print(log_str + '\n')
 
+
 def copy_target_simp(args):
     dset_loaders = data_load(args)
     if args.net_src[0:3] == 'res':
-        netF = network.ResBase(res_name=args.net_src).cuda()   
+        netF = network.ResBase(res_name=args.net_src).cuda()
     netC = network.feat_classifier_simpl(class_num=args.class_num, feat_dim=netF.in_features).cuda()
-    
-    args.modelpath = args.output_dir_src + '/source_F.pt'   
+
+    args.modelpath = args.output_dir_src + '/source_F.pt'
     netF.load_state_dict(torch.load(args.modelpath))
-    args.modelpath = args.output_dir_src + '/source_C.pt'   
+    args.modelpath = args.output_dir_src + '/source_C.pt'
     netC.load_state_dict(torch.load(args.modelpath))
     source_model = nn.Sequential(netF, netC).cuda()
     source_model.eval()
 
     if args.net[0:3] == 'res':
         netF = network.ResBase(res_name=args.net, pretrain=True).cuda()
-    netB = network.feat_bootleneck(type=args.classifier, feature_dim=netF.in_features, bottleneck_dim=args.bottleneck).cuda()
-    netC = network.feat_classifier(type=args.layer, class_num = args.class_num, bottleneck_dim=args.bottleneck).cuda()
+    netB = network.feat_bootleneck(type=args.classifier, feature_dim=netF.in_features,
+                                   bottleneck_dim=args.bottleneck).cuda()
+    netC = network.feat_classifier(type=args.layer, class_num=args.class_num, bottleneck_dim=args.bottleneck).cuda()
 
     param_group = []
     learning_rate = args.lr
     for k, v in netF.named_parameters():
-        param_group += [{'params': v, 'lr': learning_rate*0.1}]
+        param_group += [{'params': v, 'lr': learning_rate * 0.1}]
     for k, v in netB.named_parameters():
         param_group += [{'params': v, 'lr': learning_rate}]
     for k, v in netC.named_parameters():
-        param_group += [{'params': v, 'lr': learning_rate}]   
+        param_group += [{'params': v, 'lr': learning_rate}]
     optimizer = optim.SGD(param_group)
     optimizer = op_copy(optimizer)
 
@@ -265,7 +281,8 @@ def copy_target_simp(args):
             if args.topk > 0:
                 topk = np.min([args.topk, args.class_num])
                 for i in range(outputs.size()[0]):
-                    outputs[i, src_idx[i, topk:]] = (1.0 - outputs[i, src_idx[i, :topk]].sum())/ (outputs.size()[1] - topk)
+                    outputs[i, src_idx[i, topk:]] = (1.0 - outputs[i, src_idx[i, :topk]].sum()) / (
+                                outputs.size()[1] - topk)
 
             if start_test:
                 all_output = outputs.float()
@@ -278,7 +295,7 @@ def copy_target_simp(args):
 
     model.train()
     while iter_num < max_iter:
- 
+
         if args.ema < 1.0 and iter_num > 0 and iter_num % interval_iter == 0:
             model.eval()
             start_test = True
@@ -337,33 +354,37 @@ def copy_target_simp(args):
             outputs_target_m = model(mixed_input)
             update_batch_stats(model, True)
             outputs_target_m = torch.nn.Softmax(dim=1)(outputs_target_m)
-            classifier_loss = args.mix*nn.KLDivLoss(reduction='batchmean')(outputs_target_m.log(), mixed_output)
+            classifier_loss = args.mix * nn.KLDivLoss(reduction='batchmean')(outputs_target_m.log(), mixed_output)
             classifier_loss.backward()
         optimizer.step()
 
         if iter_num % interval_iter == 0 or iter_num == max_iter:
             model.eval()
             acc_s_te, mean_ent = cal_acc(dset_loaders['test'], netF, netB, netC, False)
-            log_str = 'Task: {}, Iter:{}/{}; Accuracy = {:.2f}%, Ent = {:.4f}'.format(args.name, iter_num, max_iter, acc_s_te, mean_ent)
+            log_str = 'Task: {}, Iter:{}/{}; Accuracy = {:.2f}%, Ent = {:.4f}'.format(args.name, iter_num, max_iter,
+                                                                                      acc_s_te, mean_ent)
             args.out_file.write(log_str + '\n')
             args.out_file.flush()
-            print(log_str+'\n')
+            print(log_str + '\n')
             model.train()
 
     torch.save(netF.state_dict(), osp.join(args.output_dir, "source_F.pt"))
     torch.save(netB.state_dict(), osp.join(args.output_dir, "source_B.pt"))
     torch.save(netC.state_dict(), osp.join(args.output_dir, "source_C.pt"))
 
+
 def update_batch_stats(model, flag):
     for m in model.modules():
         if isinstance(m, nn.BatchNorm2d):
             m.update_batch_stats = flag
+
 
 def print_args(args):
     s = "==========================================\n"
     for arg, content in args.__dict__.items():
         s += "{}:{}\n".format(arg, content)
     return s
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='DINE')
@@ -373,13 +394,16 @@ if __name__ == "__main__":
     parser.add_argument('--max_epoch', type=int, default=20, help="max iterations")
     parser.add_argument('--batch_size', type=int, default=64, help="batch_size")
     parser.add_argument('--worker', type=int, default=4, help="number of workers")
-    parser.add_argument('--dset', type=str, default='office-home', choices=['VISDA-C', 'office', 'image-clef', 'office-home', 'office-caltech'])
+    parser.add_argument('--dset', type=str, default='office-home',
+                        choices=['VISDA-C', 'office', 'image-clef', 'office-home', 'office-caltech'])
     parser.add_argument('--lr', type=float, default=1e-2, help="learning rate")
-    parser.add_argument('--net', type=str, default='resnet50', help="alexnet, vgg16, resnet18, resnet34, resnet50, resnet101")
+    parser.add_argument('--net', type=str, default='resnet50',
+                        help="alexnet, vgg16, resnet18, resnet34, resnet50, resnet101")
     parser.add_argument('--output', type=str, default='san')
     parser.add_argument('--lr_src', type=float, default=1e-2, help="learning rate")
-    parser.add_argument('--net_src', type=str, default='resnet50', help="alexnet, vgg16, resnet18, resnet34, resnet50, resnet101")
-    parser.add_argument('--output_src', type=str, default='san')  
+    parser.add_argument('--net_src', type=str, default='resnet50',
+                        help="alexnet, vgg16, resnet18, resnet34, resnet50, resnet101")
+    parser.add_argument('--output_src', type=str, default='san')
 
     parser.add_argument('--seed', type=int, default=2020, help="random seed")
     parser.add_argument('--bottleneck', type=int, default=256)
@@ -395,7 +419,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.dset == 'office-home':
         names = ['Art', 'Clipart', 'Product', 'RealWorld']
-        args.class_num = 65 
+        args.class_num = 65
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     SEED = args.seed
@@ -410,17 +434,18 @@ if __name__ == "__main__":
     args.t_dset_path = folder + args.dset + '/' + names[args.t] + '_list.txt'
     args.test_dset_path = folder + args.dset + '/' + names[args.t] + '_list.txt'
 
-    args.output_dir_src = osp.join(args.output_src, args.net_src, str(args.seed), 'uda', args.dset, names[args.s][0].upper())
+    args.output_dir_src = osp.join(args.output_src, args.net_src, str(args.seed), 'uda', args.dset,
+                                   names[args.s][0].upper())
     args.name_src = names[args.s][0].upper()
     if not osp.exists(args.output_dir_src):
         os.system('mkdir -p ' + args.output_dir_src)
     if not osp.exists(args.output_dir_src):
         os.mkdir(args.output_dir_src)
-        
-    if not args.distill: 
+
+    if not args.distill:
         print(args.output_dir_src + '/source_F.pt')
         args.out_file = open(osp.join(args.output_dir_src, 'log.txt'), 'w')
-        args.out_file.write(print_args(args)+'\n')
+        args.out_file.write(print_args(args) + '\n')
         args.out_file.flush()
         train_source_simp(args)
 
@@ -432,7 +457,7 @@ if __name__ == "__main__":
             args.name = names[args.s][0].upper() + names[args.t][0].upper()
             args.t_dset_path = folder + args.dset + '/' + names[args.t] + '_list.txt'
             args.test_dset_path = folder + args.dset + '/' + names[args.t] + '_list.txt'
-                            
+
             test_target_simp(args)
 
     if args.distill:
@@ -442,7 +467,8 @@ if __name__ == "__main__":
             args.t = i
             args.name = names[args.s][0].upper() + names[args.t][0].upper()
 
-            args.output_dir = osp.join(args.output, args.net_src + '_' + args.net, str(args.seed), args.da, args.dset, names[args.s][0].upper()+names[args.t][0].upper())
+            args.output_dir = osp.join(args.output, args.net_src + '_' + args.net, str(args.seed), args.da, args.dset,
+                                       names[args.s][0].upper() + names[args.t][0].upper())
             if not osp.exists(args.output_dir):
                 os.system('mkdir -p ' + args.output_dir)
             if not osp.exists(args.output_dir):
@@ -451,6 +477,6 @@ if __name__ == "__main__":
             args.out_file = open(osp.join(args.output_dir, 'log_tar.txt'), 'w')
             args.t_dset_path = folder + args.dset + '/' + names[args.t] + '_list.txt'
             args.test_dset_path = folder + args.dset + '/' + names[args.t] + '_list.txt'
-                
+
             test_target_simp(args)
             copy_target_simp(args)

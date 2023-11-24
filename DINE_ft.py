@@ -9,16 +9,18 @@ import torch.optim as optim
 from torchvision import transforms
 import network, loss
 from torch.utils.data import DataLoader
-from data_list import ImageList, ImageList_idx
+from data_list import ImageList, ImageList_idx, ImageList_aug_idx
 import random, pdb, math, copy
 from tqdm import tqdm
 from scipy.spatial.distance import cdist
 from sklearn.metrics import confusion_matrix
 
+
 def op_copy(optimizer):
     for param_group in optimizer.param_groups:
         param_group['lr0'] = param_group['lr']
     return optimizer
+
 
 def lr_scheduler(optimizer, iter_num, max_iter, gamma=10, power=0.75):
     decay = (11 + gamma * iter_num / max_iter) ** (-power)
@@ -30,13 +32,14 @@ def lr_scheduler(optimizer, iter_num, max_iter, gamma=10, power=0.75):
         param_group['nesterov'] = True
     return optimizer
 
+
 def image_train(resize_size=256, crop_size=224, alexnet=False):
-  if not alexnet:
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                   std=[0.229, 0.224, 0.225])
-  else:
-    normalize = Normalize(meanfile='./ilsvrc_2012_mean.npy')
-  return  transforms.Compose([
+    if not alexnet:
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+    else:
+        normalize = Normalize(meanfile='./ilsvrc_2012_mean.npy')
+    return transforms.Compose([
         transforms.Resize((resize_size, resize_size)),
         transforms.RandomCrop(crop_size),
         transforms.RandomHorizontalFlip(),
@@ -44,20 +47,56 @@ def image_train(resize_size=256, crop_size=224, alexnet=False):
         normalize
     ])
 
+def double_image_train(resize_size=256, crop_size=224, alexnet=False):
+    train_transforms = []
+    if not alexnet:
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+    else:
+        normalize = Normalize(meanfile='./ilsvrc_2012_mean.npy')
+    for i in range(args.aug_nums):
+        weak_transform = transforms.Compose([
+            transforms.Resize((resize_size, resize_size)),
+            transforms.RandomCrop(crop_size),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize
+        ])
+        train_transforms.append(weak_transform)
+
+    for i in range(args.aug_nums):
+        strong_augmentation = transforms.Compose([
+            transforms.Resize((resize_size, resize_size)),
+            transforms.RandomResizedCrop(size=crop_size, scale=(0.2, 1.0)),
+            transforms.RandomApply(
+                [transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)],
+                p=0.8
+            ),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.RandomSolarize(threshold=128, p=0.5),
+            # transforms.RandomApply([GaussianBlur([0.1, 2.0])], p=0.5),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize
+        ])
+        train_transforms.append(strong_augmentation)
+    return train_transforms
+
 def image_test(resize_size=256, crop_size=224, alexnet=False):
-  if not alexnet:
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                   std=[0.229, 0.224, 0.225])
-  else:
-    normalize = Normalize(meanfile='./ilsvrc_2012_mean.npy')
-  return  transforms.Compose([
+    if not alexnet:
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+    else:
+        normalize = Normalize(meanfile='./ilsvrc_2012_mean.npy')
+    return transforms.Compose([
         transforms.Resize((resize_size, resize_size)),
         transforms.CenterCrop(crop_size),
         transforms.ToTensor(),
         normalize
     ])
 
-def data_load(args): 
+
+def data_load(args):
     ## prepare data
     dsets = {}
     dset_loaders = {}
@@ -65,14 +104,18 @@ def data_load(args):
     txt_tar = open(args.t_dset_path).readlines()
     txt_test = open(args.test_dset_path).readlines()
 
-    dsets["target"] = ImageList_idx(txt_tar, transform=image_train())
-    dset_loaders["target"] = DataLoader(dsets["target"], batch_size=train_bs, shuffle=True, num_workers=args.worker, drop_last=False)
+    dsets["target"] = ImageList_aug_idx(txt_tar, transform_list=double_image_train())
+    dset_loaders["target"] = DataLoader(dsets["target"], batch_size=train_bs, shuffle=True, num_workers=args.worker,
+                                        drop_last=False)
     dsets["test"] = ImageList_idx(txt_test, transform=image_test())
-    dset_loaders["test"] = DataLoader(dsets["test"], batch_size=train_bs*3, shuffle=False, num_workers=args.worker, drop_last=False)
+    dset_loaders["test"] = DataLoader(dsets["test"], batch_size=train_bs * 3, shuffle=False, num_workers=args.worker,
+                                      drop_last=False)
     dsets["target_te"] = ImageList(txt_tar, transform=image_test())
-    dset_loaders["target_te"] = DataLoader(dsets["target_te"], batch_size=train_bs, shuffle=True, num_workers=args.worker, drop_last=False)
+    dset_loaders["target_te"] = DataLoader(dsets["target_te"], batch_size=train_bs, shuffle=True,
+                                           num_workers=args.worker, drop_last=False)
 
     return dset_loaders
+
 
 def cal_acc(loader, netF, netB, netC, flag=False):
     start_test = True
@@ -98,33 +141,35 @@ def cal_acc(loader, netF, netB, netC, flag=False):
 
     if flag:
         matrix = confusion_matrix(all_label, torch.squeeze(predict).float())
-        matrix = matrix[np.unique(all_label).astype(int),:]
-        acc = matrix.diagonal()/matrix.sum(axis=1) * 100
+        matrix = matrix[np.unique(all_label).astype(int), :]
+        acc = matrix.diagonal() / matrix.sum(axis=1) * 100
         aacc = acc.mean()
         aa = [str(np.round(i, 2)) for i in acc]
         acc = ' '.join(aa)
         return aacc, acc, predict, mean_ent
     else:
-        return accuracy*100, mean_ent, predict, mean_ent
+        return accuracy * 100, mean_ent, predict, mean_ent
+
 
 def train_target(args):
     dset_loaders = data_load(args)
     if args.net[0:3] == 'res':
         netF = network.ResBase(res_name=args.net).cuda()
-        
-    netB = network.feat_bootleneck(type=args.classifier, feature_dim=netF.in_features, bottleneck_dim=args.bottleneck).cuda()
-    netC = network.feat_classifier(type=args.layer, class_num = args.class_num, bottleneck_dim=args.bottleneck).cuda()
-   
-    modelpath = args.output_dir + '/source_F.pt'   
+
+    netB = network.feat_bootleneck(type=args.classifier, feature_dim=netF.in_features,
+                                   bottleneck_dim=args.bottleneck).cuda()
+    netC = network.feat_classifier(type=args.layer, class_num=args.class_num, bottleneck_dim=args.bottleneck).cuda()
+
+    modelpath = args.output_dir + '/source_F.pt'
     netF.load_state_dict(torch.load(modelpath))
-    modelpath = args.output_dir + '/source_B.pt'   
+    modelpath = args.output_dir + '/source_B.pt'
     netB.load_state_dict(torch.load(modelpath))
-    modelpath = args.output_dir + '/source_C.pt'    
+    modelpath = args.output_dir + '/source_C.pt'
     netC.load_state_dict(torch.load(modelpath))
 
     param_group = []
     for k, v in netF.named_parameters():
-        param_group += [{'params': v, 'lr': args.lr*0.1}]
+        param_group += [{'params': v, 'lr': args.lr * 0.1}]
     for k, v in netB.named_parameters():
         param_group += [{'params': v, 'lr': args.lr}]
     for k, v in netC.named_parameters():
@@ -141,11 +186,12 @@ def train_target(args):
     netB.eval()
     netC.eval()
     acc_s_te, _, pry, mean_ent = cal_acc(dset_loaders['test'], netF, netB, netC, False)
-    log_str = 'Task: {}, Iter:{}/{}; Accuracy={:.2f}%, Ent={:.3f}'.format(args.name, iter_num, max_iter, acc_s_te, mean_ent)
+    log_str = 'Task: {}, Iter:{}/{}; Accuracy={:.2f}%, Ent={:.3f}'.format(args.name, iter_num, max_iter, acc_s_te,
+                                                                          mean_ent)
 
     args.out_file.write(log_str + '\n')
     args.out_file.flush()
-    print(log_str+'\n')
+    print(log_str + '\n')
     netF.train()
     netB.train()
     netC.train()
@@ -153,11 +199,17 @@ def train_target(args):
     old_pry = 0
     while iter_num < max_iter:
         optimizer.zero_grad()
+        # try:
+        #     inputs_test, _, tar_idx = iter_test.next()
+        # except:
+        #     iter_test = iter(dset_loaders["target"])
+        #     inputs_test, _, tar_idx = iter_test.next()
+
         try:
-            inputs_test, _, tar_idx = iter_test.next()
+            inputs_target, y, tar_idx, inputs_test, inputs_target_aug2 = iter_target.next()
         except:
-            iter_test = iter(dset_loaders["target"])
-            inputs_test, _, tar_idx = iter_test.next()
+            iter_target = iter(dset_loaders["target"])
+            inputs_target, y, tar_idx, inputs_test, inputs_target_aug2 = iter_target.next()
 
         if inputs_test.size(0) == 1:
             continue
@@ -184,10 +236,11 @@ def train_target(args):
             netB.eval()
             netC.eval()
             acc_s_te, _, pry, mean_ent = cal_acc(dset_loaders['test'], netF, netB, netC, False)
-            log_str = 'Task: {}, Iter:{}/{}; Accuracy={:.2f}%, Ent={:.3f}'.format(args.name, iter_num, max_iter, acc_s_te, mean_ent)
+            log_str = 'Task: {}, Iter:{}/{}; Accuracy={:.2f}%, Ent={:.3f}'.format(args.name, iter_num, max_iter,
+                                                                                  acc_s_te, mean_ent)
             args.out_file.write(log_str + '\n')
             args.out_file.flush()
-            print(log_str+'\n')
+            print(log_str + '\n')
             netF.train()
             netB.train()
             netC.train()
@@ -196,14 +249,16 @@ def train_target(args):
                 break
             else:
                 old_pry = pry.clone()
- 
+
     return netF, netB, netC
+
 
 def print_args(args):
     s = "==========================================\n"
     for arg, content in args.__dict__.items():
         s += "{}:{}\n".format(arg, content)
     return s
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='DINE')
@@ -213,10 +268,12 @@ if __name__ == "__main__":
     parser.add_argument('--max_epoch', type=int, default=30, help="max iterations")
     parser.add_argument('--batch_size', type=int, default=64, help="batch_size")
     parser.add_argument('--worker', type=int, default=4, help="number of workers")
-    parser.add_argument('--dset', type=str, default='office-home', choices=['VISDA-C', 'office', 'image-clef', 'office-home', 'office-caltech'])
+    parser.add_argument('--dset', type=str, default='office-home',
+                        choices=['VISDA-C', 'office', 'image-clef', 'office-home', 'office-caltech'])
     parser.add_argument('--lr', type=float, default=1e-2, help="learning rate")
     parser.add_argument('--net', type=str, default='resnet50', help="alexnet, vgg16, resnet18, resnet50, resnext50")
-    parser.add_argument('--net_src', type=str, default='resnet50', help="alexnet, vgg16, resnet18, resnet34, resnet50, resnet101")
+    parser.add_argument('--net_src', type=str, default='resnet50',
+                        help="alexnet, vgg16, resnet18, resnet34, resnet50, resnet101")
     parser.add_argument('--seed', type=int, default=2021, help="random seed")
 
     parser.add_argument('--bottleneck', type=int, default=256)
@@ -224,11 +281,13 @@ if __name__ == "__main__":
     parser.add_argument('--classifier', type=str, default="bn", choices=["ori", "bn"])
     parser.add_argument('--output', type=str, default='san')
     parser.add_argument('--da', type=str, default='uda', choices=['uda', 'pda'])
-    
+
+    parser.add_argument("--aug_nums", type=int, default=2)
+
     args = parser.parse_args()
     if args.dset == 'office-home':
         names = ['Art', 'Clipart', 'Product', 'RealWorld']
-        args.class_num = 65 
+        args.class_num = 65
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     SEED = args.seed
@@ -247,16 +306,18 @@ if __name__ == "__main__":
         args.t_dset_path = folder + args.dset + '/' + names[args.t] + '_list.txt'
         args.test_dset_path = folder + args.dset + '/' + names[args.t] + '_list.txt'
 
-        args.output_dir = osp.join(args.output, args.net_src + '_' + args.net, str(args.seed), args.da, args.dset, names[args.s][0].upper()+names[args.t][0].upper())
-        args.name = names[args.s][0].upper()+names[args.t][0].upper()
+        args.output_dir = osp.join(args.output, args.net_src + '_' + args.net, str(args.seed), args.da, args.dset,
+                                   names[args.s][0].upper() + names[args.t][0].upper())
+        args.name = names[args.s][0].upper() + names[args.t][0].upper()
 
         if not osp.exists(args.output_dir):
             os.system('mkdir -p ' + args.output_dir)
         if not osp.exists(args.output_dir):
-            os.mkdir(args.output_dir)
-        
+            # os.mkdir(args.output_dir)
+            os.makedirs(args.output_dir)
+
         args.out_file = open(osp.join(args.output_dir, 'log_finetune.txt'), 'w')
-        args.out_file.write(print_args(args)+'\n')
+        args.out_file.write(print_args(args) + '\n')
         args.out_file.flush()
 
         train_target(args)
