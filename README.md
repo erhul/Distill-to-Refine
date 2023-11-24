@@ -21,8 +21,6 @@
 
 - [ ] Configure the pytorch environment
 
-- [ ] Download the dataset and write the correspinding text files via https://github.com/tim-learn/Generate_list  (check the file path in the 'data/office-home/**_list.txt' folder)
-
 - [ ] Run the following code (**reproduce the results for ResNet-101 (source backbone) -> ResNet-101 (target backbone) in upper Table 4**) 
 
    - training the source model
