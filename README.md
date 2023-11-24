@@ -1,14 +1,14 @@
-# Official implementation for **DINE**
+# Official implementation for **D2R**
 
-## [**DINE: Domain Adaptation from Single and Multiple Black-box Predictors**](https://arxiv.org/abs/2104.01539)
+## [**D2R: From On-target Self-Distillation to Refine with Cross-supervision for Black-Box Domain Adaptation**]()
 
-### Problem setting (Black-box UDA):  
+### Problem and our improvement: 
 
 <img src="figs/problem.png" width="500" div align=center/>
 
-### Our framework (Distill-and-Finetune):  
+### Our framework (Distill to Refine):  
 
-<img src="figs/method.png" width="800" div align=center/>
+<img src="figs/D2R.png" width="800" div align=center/>
 
 ### Prerequisites:
 - python == 3.6.8
@@ -23,34 +23,20 @@
 
 - [ ] Download the dataset and write the correspinding text files via https://github.com/tim-learn/Generate_list  (check the file path in the 'data/office-home/**_list.txt' folder)
 
-- [ ] Run the following code (**reproduce the results for ResNet-50 (source backbone) -> ResNet-50 (target backbone) in upper Table 2**) 
+- [ ] Run the following code (**reproduce the results for ResNet-101 (source backbone) -> ResNet-101 (target backbone) in upper Table 4**) 
 
-   - training the source model first
+   - training the source model
 
-     > python DINE_dist.py  --gpu_id 0 --seed 2021 --output_src ./ckps/src --dset office-home --s 0 --da uda --net_src resnet50 --max_epoch 50
-
-   - the first step (Distill)
-
-     > python DINE_dist.py  --gpu_id 0 --seed 2021 --output_src ./ckps/src --dset office-home --s 0 --da uda --net_src resnet50 --max_epoch 30 --net resnet50  --output ./ckps/tar --distill --topk 1
-   - the second step (Finetune)
+     > python D2R.py --gpu_id 0 --seed 2021 --output_src ./ckps/src --dset VISDA-C --s 0 --da uda --net_src resnet101 --max_epoch 10 --batch_size 64 --lr 1e-3
+   
+   - training the target model (D2R)
      
-     > python DINE_ft.py    --gpu_id 0 --seed 2021  --dset office-home --s 0 --da uda --net_src resnet50 --max_epoch 30 --net resnet50  --lr 1e-2 --output ./ckps/tar
+     > python D2R.py --gpu_id 0 --seed 2021 --output_src ./ckps/src --dset VISDA-C --s 0 --da uda --net_src resnet101 --max_epoch 30 --net resnet101 --output ./ckps/tar --distill --topk 1 --batch_size 32  --lr 1e-3
 
 ### Results:  
 
-<img src="figs/result-home.png" width="800" div align=center/>
-
-### Citation
-
-If you find this code useful for your research, please cite our paper
-
-> @inproceedings{liang2022dine,  
-> &nbsp; &nbsp;  title={DINE: Domain Adaptation from Single and Multiple Black-box Predictors},  
-> &nbsp; &nbsp;  author={Liang, Jian and Hu, Dapeng and Feng, Jiashi and He, Ran},  
-> &nbsp; &nbsp;  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},   
-> &nbsp; &nbsp;  year={2022}  
-> }
+<img src="figs/Result.png" width="800" div align=center/>
 
 ### Contact
 
-- [liangjian92@gmail.com](liangjian92@gmail.com)
+- [erhul_aust@163.com](erhul_aust@163.com)
